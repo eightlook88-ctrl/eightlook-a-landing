@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- OpenAI Ads Measurement Pixel (رمز الإعداد من Ads Manager) -->
+  <script>!function(w,d,s,u){if(w.oaiq)return;var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;var j=d.createElement(s);j.async=1;j.src=u;var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f)}(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js");oaiq("init",{pixelId:"UUjbcUifUso73A7CjHRPhN",debug:true});</script>
   <title>تركيب كاميرات مراقبة بالرياض | نظرة ثمانية</title>
   <meta name="description" content="توريد وتركيب وبرمجة كاميرات مراقبة للمنازل والشركات والمستودعات في الرياض مع ربط بالجوال وزيارة مجانية.">
   <meta name="robots" content="index,follow,max-image-preview:large">
@@ -487,7 +489,30 @@
         if (name === 'whatsapp_click') window.fbq('track', 'Contact');
         if (name === 'quote_form_submit') window.fbq('track', 'Lead');
       }
-      // OpenAI pixel: أضف هنا استدعاءه الرسمي إذا توفر لاحقاً
+      // OpenAI Ads Pixel (استدعاءات الأحداث الرسمية من Ads Manager)
+      if (typeof window.oaiq === 'function') {
+        if (name === 'quote_form_submit') {
+          oaiq(
+            "measure",
+            "lead_created",
+            { type: "customer_action" }
+          );
+        } else if (name === 'whatsapp_click') {
+          oaiq(
+            "measure",
+            "custom",
+            { type: "custom" },
+            { custom_event_name: "whatsapp_click" }
+          );
+        } else if (name === 'call_click') {
+          oaiq(
+            "measure",
+            "custom",
+            { type: "custom" },
+            { custom_event_name: "call_click" }
+          );
+        }
+      }
     }
 
     document.addEventListener('click', function (e) {

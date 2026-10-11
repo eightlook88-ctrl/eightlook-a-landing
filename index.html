@@ -493,8 +493,73 @@
       a.setAttribute('href', waLink(message));
     });
 
+    // ===== CRM: إرسال الأحداث إلى نظام إدارة العملاء =====
+    var CRM_URL = 'https://eightlook-crm-server-production.up.railway.app/api/public/marketing-events';
+    var CRM_EVENTS = { whatsapp_click: 1, call_click: 1, quote_form_submit: 1 };
+
+    function uuid() {
+      try {
+        if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+        var b = crypto.getRandomValues(new Uint8Array(16));
+        b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
+        var h = [].map.call(b, function (x) { return (x + 256).toString(16).slice(1); }).join('');
+        return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+      } catch (e) { return null; }
+    }
+
+    // معرّف ثابت: visitor_id في localStorage، وsession_id في sessionStorage
+    var memIds = {};
+    function stableId(store, key) {
+      try {
+        var v = window[store].getItem(key);
+        if (!v) { v = uuid(); if (v) window[store].setItem(key, v); }
+        return v;
+      } catch (e) {
+        return memIds[key] || (memIds[key] = uuid());
+      }
+    }
+
+    // fire-and-forget: لا ننتظر الرد، وفشل CRM لا يؤثر على واتساب أو الاتصال أو النموذج
+    function sendToCrm(eventName, extra) {
+      try {
+        var id = uuid();
+        if (!id || typeof window.fetch !== 'function') return;
+        var now = new Date().toISOString();
+        var body = {
+          event_id: id,
+          event_type: eventName,
+          occurred_at: now,
+          timestamp: now,
+          page_url: window.location.href,
+          referrer: document.referrer || '',
+          utm_source: utm.utm_source || '',
+          utm_medium: utm.utm_medium || '',
+          utm_campaign: utm.utm_campaign || '',
+          utm_content: utm.utm_content || '',
+          utm_term: utm.utm_term || '',
+          visitor_id: stableId('localStorage', 'el_visitor_id'),
+          session_id: stableId('sessionStorage', 'el_session_id')
+        };
+        if (eventName === 'quote_form_submit' && extra) {
+          body.contact_name = body.name = extra.contact_name || '';
+          body.phone_raw = body.phone = extra.phone_raw || '';
+          body.site_type = extra.site_type || '';
+          body.camera_count = extra.camera_count || '';
+          if (extra.hp) body.hp = extra.hp;
+        }
+        dbg('CRM:', eventName, body);
+        fetch(CRM_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify(body),
+          keepalive: true,
+          credentials: 'omit'
+        }).catch(function () { /* تجاهل */ });
+      } catch (e) { /* تجاهل */ }
+    }
+
     // ===== الأحداث =====
-    function track(name, extra) {
+    function track(name, extra, crmExtra) {
       var payload = {
         event: name,
         utm_source: utm.utm_source || '(none)',
@@ -576,6 +641,9 @@
           twq('event', 'tw-rgii8-rgx3h', {});
         }
       }
+
+      // CRM: حدث واحد لكل استدعاء track()
+      if (CRM_EVENTS[name]) sendToCrm(name, crmExtra);
     }
 
     document.addEventListener('click', function (e) {
@@ -632,7 +700,8 @@
       if (utm.utm_campaign) text += '\nالحملة: ' + utm.utm_campaign;
       if (utm.utm_term) text += '\nالكلمة: ' + utm.utm_term;
 
-      track('quote_form_submit', { site_type: site, cameras: cams });
+      track('quote_form_submit', { site_type: site, cameras: cams },
+        { contact_name: name, phone_raw: phone, site_type: site, camera_count: cams });
       dbg('نص رسالة النموذج:', text);
       window.open(waLink(text), '_blank', 'noopener');
     });

@@ -487,6 +487,29 @@
     }
 
     var message = buildMessage(utm);
+
+    // ===== رمز الطلب: يربط رسالة واتساب بهذه الزيارة (ومعرّف نقر Google) =====
+    // خمسة أحرف بلا المتشابه (0/O، 1/I)، ثابتة طوال الجلسة. تُرسل مع أحداث
+    // الـCRM وتُلحق بالرسالة الجاهزة، فيعرف الـCRM من أي زيارةٍ جاءت المحادثة.
+    var REF_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    function newRefCode() {
+      var out = '';
+      try {
+        var b = crypto.getRandomValues(new Uint8Array(5));
+        for (var i = 0; i < 5; i++) out += REF_ALPHABET[b[i] % 32];
+      } catch (e) {
+        for (var j = 0; j < 5; j++) out += REF_ALPHABET[Math.floor(Math.random() * 32)];
+      }
+      return out;
+    }
+    var refCode = (function () {
+      try {
+        var v = sessionStorage.getItem('el_ref_code');
+        if (!/^[A-HJ-NP-Z2-9]{5}$/.test(v || '')) { v = newRefCode(); sessionStorage.setItem('el_ref_code', v); }
+        return v;
+      } catch (e) { return newRefCode(); }
+    })();
+    message = message + '\n\nرمز الطلب: ' + refCode;
     dbg('الرسالة المختارة:', message);
 
     document.querySelectorAll('a[data-wa]').forEach(function (a) {
@@ -538,7 +561,8 @@
           utm_content: utm.utm_content || '',
           utm_term: utm.utm_term || '',
           visitor_id: stableId('localStorage', 'el_visitor_id'),
-          session_id: stableId('sessionStorage', 'el_session_id')
+          session_id: stableId('sessionStorage', 'el_session_id'),
+          ref_code: refCode
         };
         if (eventName === 'quote_form_submit' && extra) {
           body.contact_name = body.name = extra.contact_name || '';

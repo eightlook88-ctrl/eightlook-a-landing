@@ -509,7 +509,7 @@
         return v;
       } catch (e) { return newRefCode(); }
     })();
-    message = message + '\n\nرمز الطلب: ' + refCode;
+    message = message + '\n\n#' + refCode;
     dbg('الرسالة المختارة:', message);
 
     document.querySelectorAll('a[data-wa]').forEach(function (a) {

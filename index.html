@@ -414,7 +414,8 @@
     // ===== الإعدادات =====
     var DEBUG = false;              // للاختبار فقط: اجعلها false بعد التأكد، أو احذف كل سطر فيه dbg(
     var WA_NUMBER = '966505984581';
-    var STORE_KEY = 'el_utm';       // sessionStorage: يبقى UTM طوال تنقل الزائر داخل الجلسة
+    var STORE_KEY = 'el_utm';       // localStorage: يبقى UTM محفوظاً 30 يوماً من أول زيارة بالحملة
+    var UTM_TTL_MS = 30 * 24 * 60 * 60 * 1000;
     var UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
 
     // الرسائل حسب utm_source ثم utm_content. أضف منصة جديدة هنا لاحقاً.
@@ -439,19 +440,54 @@
     }
 
     // ===== UTM: التقاط + حفظ + استرجاع =====
+    // - رابط فيه UTM جديدة ← تُستبدل القيم المحفوظة ويبدأ عدّاد 30 يوماً من جديد.
+    // - زيارة مباشرة لاحقة (بدون UTM) ← لا تمسح القيم المحفوظة.
+    // - بعد 30 يوماً من وقت الالتقاط تنتهي صلاحيتها وتُحذف.
     var memUtm = null;
+
+    function storeGet(store, key) {
+      try { return window[store].getItem(key); } catch (e) { return null; }
+    }
+    function storeSet(store, key, val) {
+      try { window[store].setItem(key, val); } catch (e) { /* تخزين غير متاح */ }
+    }
+    function storeDel(store, key) {
+      try { window[store].removeItem(key); } catch (e) { /* تجاهل */ }
+    }
 
     function saveUtm(obj) {
       memUtm = obj;
-      try { sessionStorage.setItem(STORE_KEY, JSON.stringify(obj)); } catch (e) { /* تخزين غير متاح */ }
+      storeSet('localStorage', STORE_KEY, JSON.stringify(obj));
+    }
+
+    function isValid(o) {
+      if (!o || typeof o !== 'object') return false;
+      var t = Date.parse(o.utm_captured_at || '');
+      return !isNaN(t) && (Date.now() - t) < UTM_TTL_MS;
     }
 
     function loadUtm() {
+      var o = null;
+      try { o = JSON.parse(storeGet('localStorage', STORE_KEY) || 'null'); } catch (e) { o = null; }
+      if (isValid(o)) return o;
+      if (o) storeDel('localStorage', STORE_KEY);   // منتهية الصلاحية أو تالفة
+      // ترحيل: زيارات سابقة محفوظة في sessionStorage بالصيغة القديمة (بدون وقت)
       try {
-        var raw = sessionStorage.getItem(STORE_KEY);
-        if (raw) return JSON.parse(raw);
+        var legacy = JSON.parse(storeGet('sessionStorage', STORE_KEY) || 'null');
+        if (legacy && typeof legacy === 'object' && legacy.utm_source) {
+          var m = {};
+          UTM_KEYS.forEach(function (k) { if (legacy[k]) m[k] = legacy[k]; });
+          m.utm_captured_at = new Date().toISOString();
+          saveUtm(m);
+          storeDel('sessionStorage', STORE_KEY);
+          return m;
+        }
       } catch (e) { /* تجاهل */ }
-      return memUtm || {};
+      return isValid(memUtm) ? memUtm : {};
+    }
+
+    function sameUtm(a, b) {
+      return UTM_KEYS.every(function (k) { return (a[k] || '') === (b[k] || ''); });
     }
 
     function captureUtm() {
@@ -461,12 +497,16 @@
         var v = q.get(k);
         if (v) found[k] = v.trim().slice(0, 100);
       });
+      var stored = loadUtm();
       if (Object.keys(found).length) {
+        // نفس الحملة مرة ثانية ← نُبقي وقت أول زيارة كما هو
+        found.utm_captured_at = (stored.utm_captured_at && sameUtm(found, stored))
+          ? stored.utm_captured_at
+          : new Date().toISOString();
         saveUtm(found);
         dbg('UTM من الرابط:', found);
         return found;
       }
-      var stored = loadUtm();
       dbg('UTM من التخزين:', stored);
       return stored;
     }
@@ -560,6 +600,7 @@
           utm_campaign: utm.utm_campaign || '',
           utm_content: utm.utm_content || '',
           utm_term: utm.utm_term || '',
+          utm_captured_at: utm.utm_captured_at || '',
           visitor_id: stableId('localStorage', 'el_visitor_id'),
           session_id: stableId('sessionStorage', 'el_session_id'),
           ref_code: refCode

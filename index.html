@@ -14,6 +14,17 @@
   </script>
   <!-- OpenAI Ads Measurement Pixel (رمز الإعداد من Ads Manager) -->
   <script>!function(w,d,s,u){if(w.oaiq)return;var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;var j=d.createElement(s);j.async=1;j.src=u;var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f)}(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js");oaiq("init",{pixelId:"UDePQx3ZJMcHgg9vFd6pz9"});</script>
+  <!-- TikTok Pixel (رمز الإعداد من TikTok Events Manager) — لا يُحمَّل ما لم يُضبط المعرّف -->
+  <script>
+    var TT_PIXEL_ID = 'DB7SMO3C77UB6E0E9A4G';
+    if (TT_PIXEL_ID) {
+      !function (w, d, t) {
+        w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var r="https://analytics.tiktok.com/i18n/pixel/events.js",o=n&&n.partner;ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=r,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};n=d.createElement("script");n.type="text/javascript",n.async=!0,n.src=r+"?sdkid="+e+"&lib="+t;e=d.getElementsByTagName("script")[0];e.parentNode.insertBefore(n,e)};
+        ttq.load(TT_PIXEL_ID);
+        ttq.page();
+      }(window, document, 'ttq');
+    }
+  </script>
   <title>تركيب كاميرات مراقبة وشبكات في الرياض | نظرة ثمانية</title>
   <meta name="description" content="حلول كاميرات مراقبة وشبكات متكاملة في الرياض تشمل التوريد والتركيب والبرمجة والتمديد والربط على الجوال للمنازل والشركات والمستودعات.">
   <meta name="robots" content="index,follow,max-image-preview:large">
@@ -513,6 +524,27 @@
 
     var utm = captureUtm();
 
+    // ===== TikTok: ttclid من رابط الإعلان يُحفظ 30 يوماً مثل UTM، و_ttp من ملف Pixel =====
+    var TTCLID_KEY = 'el_ttclid';
+    function captureTtclid() {
+      var v = '';
+      try { v = (new URLSearchParams(window.location.search).get('ttclid') || '').trim().slice(0, 200); } catch (e) { v = ''; }
+      if (v) {
+        storeSet('localStorage', TTCLID_KEY, JSON.stringify({ v: v, at: new Date().toISOString() }));
+        return v;
+      }
+      var o = null;
+      try { o = JSON.parse(storeGet('localStorage', TTCLID_KEY) || 'null'); } catch (e) { o = null; }
+      var t = o && Date.parse(o.at || '');
+      if (o && o.v && !isNaN(t) && (Date.now() - t) < UTM_TTL_MS) return o.v;
+      if (o) storeDel('localStorage', TTCLID_KEY);
+      return '';
+    }
+    var ttclid = captureTtclid();
+    function ttpCookie() {
+      try { var m = document.cookie.match(/(?:^|;\s*)_ttp=([^;]+)/); return m ? decodeURIComponent(m[1]).slice(0, 100) : ''; } catch (e) { return ''; }
+    }
+
     // ===== الرسالة الديناميكية =====
     function buildMessage(u) {
       var src = (u.utm_source || '').toLowerCase();
@@ -583,9 +615,9 @@
     }
 
     // fire-and-forget: لا ننتظر الرد، وفشل CRM لا يؤثر على واتساب أو الاتصال أو النموذج
-    function sendToCrm(eventName, extra) {
+    function sendToCrm(eventName, extra, eventId) {
       try {
-        var id = uuid();
+        var id = eventId || uuid();
         if (!id || typeof window.fetch !== 'function') return;
         var now = new Date().toISOString();
         var body = {
@@ -603,7 +635,9 @@
           utm_captured_at: utm.utm_captured_at || '',
           visitor_id: stableId('localStorage', 'el_visitor_id'),
           session_id: stableId('sessionStorage', 'el_session_id'),
-          ref_code: refCode
+          ref_code: refCode,
+          ttclid: ttclid,
+          ttp: ttpCookie()
         };
         if (eventName === 'quote_form_submit' && extra) {
           body.contact_name = body.name = extra.contact_name || '';
@@ -625,6 +659,7 @@
 
     // ===== الأحداث =====
     function track(name, extra, crmExtra) {
+      var eventId = CRM_EVENTS[name] ? uuid() : null;
       var payload = {
         event: name,
         utm_source: utm.utm_source || '(none)',
@@ -707,8 +742,14 @@
         }
       }
 
+      // TikTok Pixel: نفس event_id المرسل إلى الـCRM، فيعدّه TikTok حدثاً واحداً مع Events API
+      var TT_EVENTS = { quote_form_submit: 'Lead', whatsapp_click: 'Contact', call_click: 'ClickButton' };
+      if (window.ttq && typeof window.ttq.track === 'function' && TT_EVENTS[name] && eventId) {
+        window.ttq.track(TT_EVENTS[name], { content_name: name }, { event_id: eventId });
+      }
+
       // CRM: حدث واحد لكل استدعاء track()
-      if (CRM_EVENTS[name]) sendToCrm(name, crmExtra);
+      if (CRM_EVENTS[name]) sendToCrm(name, crmExtra, eventId);
     }
 
     document.addEventListener('click', function (e) {

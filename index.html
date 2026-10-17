@@ -541,6 +541,46 @@
       return '';
     }
     var ttclid = captureTtclid();
+
+    // ===== Google Ads: gclid / gbraid / wbraid من رابط الإعلان تُحفظ 30 يوماً =====
+    // كلٌّ في مفتاحه. قيمةٌ صالحة في الرابط تُحفظ؛ وغيابها أو فراغها لا يمسّ المحفوظ.
+    var GCLICK_KEYS = ['gclid', 'gbraid', 'wbraid'];
+    var CLICK_ID_RE = /^[A-Za-z0-9_.~-]{1,200}$/;
+    function captureClickId(param) {
+      var key = 'el_' + param;
+      var v = '';
+      try { v = (new URLSearchParams(window.location.search).get(param) || '').trim(); } catch (e) { v = ''; }
+      if (CLICK_ID_RE.test(v)) {
+        storeSet('localStorage', key, JSON.stringify({ v: v, at: new Date().toISOString() }));
+        return v;
+      }
+      var o = null;
+      try { o = JSON.parse(storeGet('localStorage', key) || 'null'); } catch (e) { o = null; }
+      var t = o && Date.parse(o.at || '');
+      if (o && CLICK_ID_RE.test(o.v || '') && !isNaN(t) && (Date.now() - t) < UTM_TTL_MS) return o.v;
+      if (o) storeDel('localStorage', key);
+      return '';
+    }
+    var gclick = {};
+    GCLICK_KEYS.forEach(function (k) { gclick[k] = captureClickId(k); });
+
+    // ===== Enhanced Conversions for Leads: الجوال بصيغة E.164 ثم SHA-256 =====
+    // الرقم الصريح لا يغادر المتصفح إلى Google؛ يُرسل مجزّأً فقط، ومع نموذج التسعيرة وحده.
+    function phoneE164(raw) {
+      var d = String(raw || '').replace(/\D/g, '').replace(/^00/, '');
+      if (/^9665\d{8}$/.test(d)) return '+' + d;
+      if (/^05\d{8}$/.test(d)) return '+966' + d.slice(1);
+      if (/^5\d{8}$/.test(d)) return '+966' + d;
+      return '';
+    }
+    function sha256Hex(text, cb) {
+      try {
+        if (!window.crypto || !window.crypto.subtle || typeof TextEncoder !== 'function') return cb('');
+        window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)).then(function (buf) {
+          cb([].map.call(new Uint8Array(buf), function (b) { return (b + 256).toString(16).slice(1); }).join(''));
+        }, function () { cb(''); });
+      } catch (e) { cb(''); }
+    }
     function ttpCookie() {
       try { var m = document.cookie.match(/(?:^|;\s*)_ttp=([^;]+)/); return m ? decodeURIComponent(m[1]).slice(0, 100) : ''; } catch (e) { return ''; }
     }
@@ -637,7 +677,10 @@
           session_id: stableId('sessionStorage', 'el_session_id'),
           ref_code: refCode,
           ttclid: ttclid,
-          ttp: ttpCookie()
+          ttp: ttpCookie(),
+          gclid: gclick.gclid,
+          gbraid: gclick.gbraid,
+          wbraid: gclick.wbraid
         };
         if (eventName === 'quote_form_submit' && extra) {
           body.contact_name = body.name = extra.contact_name || '';
@@ -711,11 +754,27 @@
       // Google Ads conversions (مقتطفات الأحداث الرسمية من Google Ads)
       if (typeof window.gtag === 'function') {
         if (name === 'quote_form_submit') {
-          gtag('event', 'conversion', {
-              'send_to': 'AW-11514447422/COavCIygmZgdEL6MwvIq',
-              'value': 1.0,
-              'currency': 'SAR'
-          });
+          // Enhanced Conversions for Leads: الجوال مجزّأً (SHA-256 لصيغة E.164) مع هذا التحويل وحده.
+          // يُرسل التحويل مرةً واحدة؛ وبلا user_data إن تعذّر التجزيء أو تأخّر.
+          var gadsSent = false;
+          var sendQuoteConversion = function (hash) {
+            if (gadsSent) return;
+            gadsSent = true;
+            var params = {
+                'send_to': 'AW-11514447422/COavCIygmZgdEL6MwvIq',
+                'value': 1.0,
+                'currency': 'SAR'
+            };
+            if (hash) params.user_data = { 'sha256_phone_number': hash };
+            gtag('event', 'conversion', params);
+          };
+          var e164 = phoneE164(crmExtra && crmExtra.phone_raw);
+          if (e164) {
+            setTimeout(function () { sendQuoteConversion(''); }, 1500);
+            sha256Hex(e164, sendQuoteConversion);
+          } else {
+            sendQuoteConversion('');
+          }
         } else if (name === 'whatsapp_click') {
           gtag('event', 'conversion', {
               'send_to': 'AW-11514447422/Rfo4CI-gmZgdEL6MwvIq',

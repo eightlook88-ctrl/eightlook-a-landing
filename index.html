@@ -654,6 +654,33 @@
       }
     }
 
+    // ===== OpenAI Ads Pixel: بيانات المطابقة (مجزّأة فقط) =====
+    // حسب وثائق OpenAI تُمرَّر بيانات المستخدم في oaiq("init") داخل كائن user،
+    // وتُعاد init بالكائن كاملاً كلما توفّر جديد. لا يُرسل أي قيمة خام:
+    //   external_id_sha256  ← SHA-256 لـvisitor_id الثابت (بلا تعديل على الصيغة)
+    //   phone_number_sha256 ← SHA-256 للرقم بصيغة 9665XXXXXXXX، وفقط بعد إدخاله في النموذج
+    //   country             ← "SA" (غير مجزّأ). لا مدينة: لا نفترض مدينة الزائر.
+    var OAIQ_PIXEL = 'UDePQx3ZJMcHgg9vFd6pz9';
+    var oaiqUser = { country: 'SA' };
+    function oaiqInitUser() {
+      try {
+        if (typeof window.oaiq === 'function') window.oaiq('init', { pixelId: OAIQ_PIXEL, user: oaiqUser });
+      } catch (e) { /* تجاهل */ }
+    }
+    (function () {
+      var vid = stableId('localStorage', 'el_visitor_id');
+      if (!vid) return oaiqInitUser();
+      sha256Hex(String(vid).trim(), function (h) {
+        if (h) oaiqUser.external_id_sha256 = h;
+        oaiqInitUser();
+      });
+    })();
+    // الجوال لـOpenAI: رمز الدولة وبلا "+" ولا أصفار بادئة — 8 إلى 15 رقمًا.
+    function oaiqPhone(raw) {
+      var e164 = phoneE164(raw);
+      return e164 ? e164.slice(1) : '';
+    }
+
     // fire-and-forget: لا ننتظر الرد، وفشل CRM لا يؤثر على واتساب أو الاتصال أو النموذج
     function sendToCrm(eventName, extra, eventId) {
       try {
@@ -727,26 +754,45 @@
         if (name === 'quote_form_submit') window.fbq('track', 'Lead');
       }
       // OpenAI Ads Pixel (استدعاءات الأحداث الرسمية من Ads Manager)
+      // event_id: نفس معرّف الـCRM وTikTok، جاهزٌ للمطابقة مع Conversions API لاحقًا.
       if (typeof window.oaiq === 'function') {
+        var oaiqOpts = eventId ? { event_id: eventId } : {};
         if (name === 'quote_form_submit') {
-          oaiq(
-            "measure",
-            "lead_created",
-            { type: "customer_action" }
-          );
+          // الجوال مجزّأً قبل الحدث؛ والحدث يُرسل مرة واحدة حتى لو تعذّر التجزيء أو تأخّر.
+          var oaiqSent = false;
+          var sendLead = function () {
+            if (oaiqSent) return;
+            oaiqSent = true;
+            oaiq(
+              "measure",
+              "lead_created",
+              { type: "customer_action" },
+              oaiqOpts
+            );
+          };
+          var oaiqNum = oaiqPhone(crmExtra && crmExtra.phone_raw);
+          if (oaiqNum) {
+            setTimeout(sendLead, 1500);
+            sha256Hex(oaiqNum, function (h) {
+              if (h && !oaiqSent) { oaiqUser.phone_number_sha256 = h; oaiqInitUser(); }
+              sendLead();
+            });
+          } else {
+            sendLead();
+          }
         } else if (name === 'whatsapp_click') {
           oaiq(
             "measure",
             "custom",
             { type: "custom" },
-            { custom_event_name: "whatsapp_click" }
+            Object.assign({ custom_event_name: "whatsapp_click" }, oaiqOpts)
           );
         } else if (name === 'call_click') {
           oaiq(
             "measure",
             "custom",
             { type: "custom" },
-            { custom_event_name: "call_click" }
+            Object.assign({ custom_event_name: "call_click" }, oaiqOpts)
           );
         }
       }

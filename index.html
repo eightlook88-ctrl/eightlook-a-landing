@@ -847,8 +847,9 @@
         }
       }
 
-      // TikTok Pixel: نفس event_id المرسل إلى الـCRM، فيعدّه TikTok حدثاً واحداً مع Events API
-      var TT_EVENTS = { quote_form_submit: 'Lead', whatsapp_click: 'Contact', call_click: 'ClickButton' };
+      // TikTok Pixel: نفس event_id المرسل إلى الـCRM، فيعدّه TikTok حدثاً واحداً مع Events API.
+      // واتساب والاتصال كلاهما Contact، ويفرّق بينهما content_name.
+      var TT_EVENTS = { quote_form_submit: 'Lead', whatsapp_click: 'Contact', call_click: 'Contact' };
       if (window.ttq && typeof window.ttq.track === 'function' && TT_EVENTS[name] && eventId) {
         window.ttq.track(TT_EVENTS[name], { content_name: name }, { event_id: eventId });
       }

@@ -25,6 +25,20 @@
       }(window, document, 'ttq');
     }
   </script>
+  <!-- Snap Pixel (رمز الإعداد من Snapchat Events Manager) — لا يُحمَّل ما لم يُضبط المعرّف -->
+  <script>
+    var SNAP_PIXEL_ID = '';
+    if (SNAP_PIXEL_ID) {
+      (function(e,t,n){if(e.snaptr)return;var a=e.snaptr=function()
+      {a.handleRequest?a.handleRequest.apply(a,arguments):a.queue.push(arguments)};
+      a.queue=[];var s='script';var r=t.createElement(s);r.async=!0;
+      r.src=n;var u=t.getElementsByTagName(s)[0];
+      u.parentNode.insertBefore(r,u);})(window,document,
+      'https://sc-static.net/scevent.min.js');
+      snaptr('init', SNAP_PIXEL_ID, {});
+      snaptr('track', 'PAGE_VIEW');
+    }
+  </script>
   <title>تركيب كاميرات مراقبة وشبكات في الرياض | نظرة ثمانية</title>
   <meta name="description" content="حلول كاميرات مراقبة وشبكات متكاملة في الرياض تشمل التوريد والتركيب والبرمجة والتمديد والربط على الجوال للمنازل والشركات والمستودعات.">
   <meta name="robots" content="index,follow,max-image-preview:large">
@@ -564,6 +578,13 @@
     var gclick = {};
     GCLICK_KEYS.forEach(function (k) { gclick[k] = captureClickId(k); });
 
+    // ===== Snapchat: ScCid من رابط الإعلان يُحفظ 30 يوماً، و_scid من ملف Snap Pixel =====
+    // رجوع الزائر لاحقاً بلا رابط الإعلان يُرسل المحفوظ، فلا يصير المصدر Direct.
+    var sccid = captureClickId('ScCid');
+    function scidCookie() {
+      try { var m = document.cookie.match(/(?:^|;\s*)_scid=([^;]+)/); return m ? decodeURIComponent(m[1]).slice(0, 100) : ''; } catch (e) { return ''; }
+    }
+
     // ===== Enhanced Conversions for Leads: الجوال بصيغة E.164 ثم SHA-256 =====
     // الرقم الصريح لا يغادر المتصفح إلى Google؛ يُرسل مجزّأً فقط، ومع نموذج التسعيرة وحده.
     function phoneE164(raw) {
@@ -707,7 +728,9 @@
           ttp: ttpCookie(),
           gclid: gclick.gclid,
           gbraid: gclick.gbraid,
-          wbraid: gclick.wbraid
+          wbraid: gclick.wbraid,
+          sccid: sccid,
+          scid: scidCookie()
         };
         if (eventName === 'quote_form_submit' && extra) {
           body.contact_name = body.name = extra.contact_name || '';
@@ -852,6 +875,16 @@
       var TT_EVENTS = { quote_form_submit: 'Lead', whatsapp_click: 'Contact', call_click: 'Contact' };
       if (window.ttq && typeof window.ttq.track === 'function' && TT_EVENTS[name] && eventId) {
         window.ttq.track(TT_EVENTS[name], { content_name: name }, { event_id: eventId });
+      }
+
+      // Snap Pixel: النموذج SIGN_UP (أقرب حدث قياسي إلى Lead في Snap)، وواتساب والاتصال
+      // حدثان مخصّصان منفصلان — تفاعلٌ أولي لا تحويلٌ نهائي. client_dedup_id هو نفس event_id
+      // المرسل إلى الـCRM، فتُضاف Snap Conversions API لاحقاً بلا عدٍّ مزدوج.
+      var SNAP_EVENTS = { quote_form_submit: 'SIGN_UP', whatsapp_click: 'CUSTOM_EVENT_1', call_click: 'CUSTOM_EVENT_2' };
+      if (typeof window.snaptr === 'function' && SNAP_EVENTS[name] && eventId) {
+        var snapData = { client_dedup_id: eventId, description: name };
+        if (name === 'quote_form_submit') snapData.sign_up_method = 'quote_form';
+        window.snaptr('track', SNAP_EVENTS[name], snapData);
       }
 
       // CRM: حدث واحد لكل استدعاء track()

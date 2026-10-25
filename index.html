@@ -871,26 +871,23 @@
       }
 
       // TikTok Pixel: نفس event_id المرسل إلى الـCRM، فيعدّه TikTok حدثاً واحداً مع Events API.
-      // واتساب والاتصال كلاهما Contact، ويفرّق بينهما content_name.
-      var TT_EVENTS = { quote_form_submit: 'Lead', whatsapp_click: 'Contact', call_click: 'Contact' };
+      // النقرتان حدثان مخصّصان للقياس وحده — النقرة ليست نتيجة؛ Contact صار للتواصل الفعلي
+      // الذي يرسله الخادم بعد تحقّقه في الـCRM. والنموذج SubmitForm (حدث TikTok القياسي).
+      var TT_EVENTS = { quote_form_submit: 'SubmitForm', whatsapp_click: 'WhatsAppClick', call_click: 'CallClick' };
       if (window.ttq && typeof window.ttq.track === 'function' && TT_EVENTS[name] && eventId) {
         window.ttq.track(TT_EVENTS[name], { content_name: name }, { event_id: eventId });
       }
 
-      // Snap Pixel: التحويل القياسي الوحيد المتاح للتحسين هو SIGN_UP (لا Lead في Snap)،
-      // فيُرسله النموذج وواتساب والاتصال جميعاً، ويفرّق بينها sign_up_method
-      // (quote_form · whatsapp · call). وواتساب والاتصال يُرسلان أيضاً حدثهما المخصّص
-      // (CUSTOM_EVENT_1 / CUSTOM_EVENT_2) للقياس المنفصل. client_dedup_id هو نفس event_id
-      // المرسل إلى الـCRM، فتُضاف Snap Conversions API لاحقاً بلا عدٍّ مزدوج.
-      var SNAP_CUSTOM = { whatsapp_click: 'CUSTOM_EVENT_1', call_click: 'CUSTOM_EVENT_2' };
-      var SNAP_SIGNUP_METHOD = { quote_form_submit: 'quote_form', whatsapp_click: 'whatsapp', call_click: 'call' };
-      if (typeof window.snaptr === 'function' && SNAP_SIGNUP_METHOD[name] && eventId) {
-        if (SNAP_CUSTOM[name]) {
-          window.snaptr('track', SNAP_CUSTOM[name], { client_dedup_id: eventId, description: name });
-        }
-        window.snaptr('track', 'SIGN_UP', {
-          client_dedup_id: eventId, description: name, sign_up_method: SNAP_SIGNUP_METHOD[name]
-        });
+      // Snap Pixel: SIGN_UP للنموذج وحده. نقرتا واتساب والاتصال للقياس وحده
+      // (CUSTOM_EVENT_1 / CUSTOM_EVENT_2) — النقرة ليست تحويلاً. والنتائج الفعلية (محادثة،
+      // مكالمة، مؤهَّل، بيع) يرسلها الخادم عبر Snap Conversions API بعد تحقّقها في الـCRM.
+      // client_dedup_id هو نفس event_id المرسل إلى الـCRM: SIGN_UP النموذج من Pixel ومن
+      // CAPI يُعدّ حدثاً واحداً.
+      var SNAP_EVENTS = { quote_form_submit: 'SIGN_UP', whatsapp_click: 'CUSTOM_EVENT_1', call_click: 'CUSTOM_EVENT_2' };
+      if (typeof window.snaptr === 'function' && SNAP_EVENTS[name] && eventId) {
+        var snapData = { client_dedup_id: eventId, description: name };
+        if (name === 'quote_form_submit') snapData.sign_up_method = 'quote_form';
+        window.snaptr('track', SNAP_EVENTS[name], snapData);
       }
 
       // CRM: حدث واحد لكل استدعاء track()

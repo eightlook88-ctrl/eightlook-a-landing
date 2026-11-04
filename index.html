@@ -581,6 +581,11 @@
     // ===== Snapchat: ScCid من رابط الإعلان يُحفظ 30 يوماً، و_scid من ملف Snap Pixel =====
     // رجوع الزائر لاحقاً بلا رابط الإعلان يُرسل المحفوظ، فلا يصير المصدر Direct.
     var sccid = captureClickId('ScCid');
+
+    // ===== ChatGPT Ads: oppref من رابط الإعلان يُحفظ 30 يوماً =====
+    // القيمة تأتي من OpenAI في رابط النقرة وحدها؛ لا تُضاف يدوياً لأي رابط.
+    // رجوع الزائر لاحقاً بلا الرابط يُرسل المحفوظ، فتبقى النتيجة منسوبة لـChatGPT.
+    var oppref = captureClickId('oppref');
     function scidCookie() {
       try { var m = document.cookie.match(/(?:^|;\s*)_scid=([^;]+)/); return m ? decodeURIComponent(m[1]).slice(0, 100) : ''; } catch (e) { return ''; }
     }
@@ -682,6 +687,9 @@
     //   phone_number_sha256 ← SHA-256 للرقم بصيغة 9665XXXXXXXX، وفقط بعد إدخاله في النموذج
     //   country             ← "SA" (غير مجزّأ). لا مدينة: لا نفترض مدينة الزائر.
     var OAIQ_PIXEL = 'UDePQx3ZJMcHgg9vFd6pz9';
+    // النقرة ليست عميلاً: نقرات واتساب/الاتصال لا تُرسل إلى OpenAI كتحويل.
+    // النتائج الحقيقية (محادثة فعلية، مكالمة مُجابة) يرسلها الـCRM مع oppref.
+    var OAIQ_SEND_CLICKS = false;
     var oaiqUser = { country: 'SA' };
     function oaiqInitUser() {
       try {
@@ -730,7 +738,8 @@
           gbraid: gclick.gbraid,
           wbraid: gclick.wbraid,
           sccid: sccid,
-          scid: scidCookie()
+          scid: scidCookie(),
+          oppref: oppref
         };
         if (eventName === 'quote_form_submit' && extra) {
           body.contact_name = body.name = extra.contact_name || '';
@@ -803,14 +812,14 @@
           } else {
             sendLead();
           }
-        } else if (name === 'whatsapp_click') {
+        } else if (OAIQ_SEND_CLICKS && name === 'whatsapp_click') {
           oaiq(
             "measure",
             "custom",
             { type: "custom" },
             Object.assign({ custom_event_name: "whatsapp_click" }, oaiqOpts)
           );
-        } else if (name === 'call_click') {
+        } else if (OAIQ_SEND_CLICKS && name === 'call_click') {
           oaiq(
             "measure",
             "custom",
